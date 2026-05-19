@@ -5,7 +5,6 @@ import { eq } from 'drizzle-orm';
 import { db } from './db';
 
 if (!process.env.RMQ_URL) throw new Error('RMQ_URL is not set');
-if (!process.env.WS_PORT) throw new Error('WS_PORT is not set');
 
 const EXCHANGE_NAME = 'chat.direct';
 
@@ -32,8 +31,9 @@ async function startWorker() {
 	const channel = await connection.createChannel();
 	await channel.assertExchange(EXCHANGE_NAME, 'direct', { durable: true });
 
-	const wss = new WebSocketServer({ port: parseInt(process.env.WS_PORT!) });
-	console.log(`🚀 Messaging Worker running on ws://localhost:${process.env.WS_PORT}`);
+	const port = parseInt(process.env.PORT || process.env.WS_PORT || '8080');
+	const wss = new WebSocketServer({ port });
+	console.log(`🚀 Messaging Worker running on ws://localhost:${port}`);
 
 	wss.on('connection', async (ws: WebSocket) => {
 		let userId: string | null = null;
