@@ -1,0 +1,21 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.nuxt
+/.output
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+# SQLite
+*.db

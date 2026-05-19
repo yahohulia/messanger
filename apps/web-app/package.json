@@ -1,0 +1,24 @@
+{
+	"name": "web-app",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "nuxt dev",
+		"build": "nuxt build",
+		"preview": "nuxt preview"
+	},
+	"dependencies": {
+		"@libsql/client": "^0.17.0",
+		"better-auth": "~1.4.21",
+		"drizzle-orm": "^0.45.1",
+		"nuxt": "^3.17.3"
+	},
+	"devDependencies": {
+		"@messanger/db": "*",
+		"@tailwindcss/forms": "^0.5.11",
+		"@tailwindcss/vite": "^4.1.18",
+		"@types/node": "^24",
+		"tailwindcss": "^4.1.18",
+		"typescript": "^5.9.3"
+	}
+}

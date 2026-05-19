@@ -1,0 +1,19 @@
+{
+	"name": "messanger",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"format": "prettier --write ."
+	},
+	"devDependencies": {
+		"prettier": "^3.8.1",
+		"prettier-plugin-tailwindcss": "^0.7.2"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	]
+}
