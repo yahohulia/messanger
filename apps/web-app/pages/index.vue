@@ -74,7 +74,8 @@ watch(
 )
 
 function connectWebSocket(token: string) {
-  ws.value = new WebSocket('ws://localhost:8080')
+  const { public: pub } = useRuntimeConfig()
+  ws.value = new WebSocket((pub.wsUrl as string) || 'ws://localhost:8080')
 
   ws.value.onopen = () => ws.value?.send(JSON.stringify({ type: 'auth', token }))
 

@@ -6,9 +6,15 @@ export default defineNuxtConfig({
   vite: {
     plugins: [tailwindcss()]
   },
+  nitro: {
+    preset: 'vercel'
+  },
   runtimeConfig: {
     databaseUrl: '',
     betterAuthSecret: '',
-    origin: ''
+    origin: '',
+    public: {
+      wsUrl: ''
+    }
   }
 })
