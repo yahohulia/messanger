@@ -13,6 +13,9 @@ export default defineNuxtConfig({
     databaseUrl: '',
     betterAuthSecret: '',
     origin: '',
+    cloudinaryCloudName: '',
+    cloudinaryApiKey: '',
+    cloudinaryApiSecret: '',
     public: {
       wsUrl: ''
     }
