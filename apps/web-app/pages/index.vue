@@ -95,14 +95,25 @@ type CtxMenu =
 
 const ctxMenu = ref<CtxMenu | null>(null)
 
+const MENU_WIDTH = 168 // min-w of context menu in px
+const MENU_HEIGHT_APPROX = 100
+
+function menuPos(e: MouseEvent) {
+  const x = e.clientX + MENU_WIDTH > window.innerWidth ? e.clientX - MENU_WIDTH : e.clientX
+  const y = e.clientY + MENU_HEIGHT_APPROX > window.innerHeight ? e.clientY - MENU_HEIGHT_APPROX : e.clientY
+  return { x, y }
+}
+
 function openContactMenu(e: MouseEvent, contactId: string) {
   e.preventDefault()
-  ctxMenu.value = { type: 'contact', contactId, x: e.clientX, y: e.clientY }
+  const { x, y } = menuPos(e)
+  ctxMenu.value = { type: 'contact', contactId, x, y }
 }
 
 function openMessageMenu(e: MouseEvent, messageId: string) {
   e.preventDefault()
-  ctxMenu.value = { type: 'message', messageId, x: e.clientX, y: e.clientY }
+  const { x, y } = menuPos(e)
+  ctxMenu.value = { type: 'message', messageId, x, y }
 }
 
 function closeCtx() { ctxMenu.value = null }
@@ -113,12 +124,23 @@ onUnmounted(() => {
   ws.value?.close()
 })
 
-async function clearHistory(contactId: string) {
-  await $fetch('/api/chat/clear-history', { method: 'POST', body: { contactId } })
+const clearHistoryConfirmId = ref<string | null>(null)
+const deleteChatConfirmId = ref<string | null>(null)
+
+async function clearHistory() {
+  if (!clearHistoryConfirmId.value) return
+  const contactId = clearHistoryConfirmId.value
+  await $fetch('/api/chat/clear-history', { method: 'POST', body: { contactId } }).catch(() => {})
   allMessages.value = allMessages.value.filter(
     (m) => m.senderId !== contactId && m.receiverId !== contactId
   )
-  closeCtx()
+  clearHistoryConfirmId.value = null
+}
+
+async function deleteChat() {
+  if (!deleteChatConfirmId.value) return
+  await hideChat(deleteChatConfirmId.value)
+  deleteChatConfirmId.value = null
 }
 
 // ── Delete message ────────────────────────────────────────────
@@ -364,17 +386,6 @@ function avatarLetter(name: unknown): string {
             <p class="text-sm text-gray-400 truncate">{{ lastMessageFor(u.id) || 'No messages yet' }}</p>
           </div>
         </button>
-        <!-- Hide chat button (only for contacts, not search results) -->
-        <button
-          v-if="!searchQuery.trim()"
-          class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-200 opacity-0 group-hover:opacity-100 transition-all"
-          title="Remove from list"
-          @click.stop="hideChat(u.id)"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
         </div>
       </div>
 
@@ -525,7 +536,7 @@ function avatarLetter(name: unknown): string {
       <template v-if="ctxMenu.type === 'contact'">
         <button
           class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-          @click="clearHistory(ctxMenu.contactId)"
+          @click="clearHistoryConfirmId = ctxMenu.contactId; closeCtx()"
         >
           <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0H7m2-3h6a1 1 0 011 1H8a1 1 0 011-1z"/>
@@ -534,7 +545,7 @@ function avatarLetter(name: unknown): string {
         </button>
         <button
           class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
-          @click="hideChat(ctxMenu.contactId); closeCtx()"
+          @click="deleteChatConfirmId = ctxMenu.contactId; closeCtx()"
         >
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -569,7 +580,7 @@ function avatarLetter(name: unknown): string {
       </template>
     </div>
 
-    <!-- ── Delete confirmation modal ──────────────────────────── -->
+    <!-- ── Delete message modal ──────────────────────────────── -->
     <div
       v-if="deleteConfirmId"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
@@ -590,6 +601,62 @@ function avatarLetter(name: unknown): string {
           <button
             class="px-4 py-2 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
             @click="confirmDelete"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Clear history modal ───────────────────────────────── -->
+    <div
+      v-if="clearHistoryConfirmId"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      @click.self="clearHistoryConfirmId = null"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl w-80 p-6 flex flex-col gap-4">
+        <div class="flex flex-col gap-1">
+          <h3 class="text-base font-semibold text-gray-900">Clear history?</h3>
+          <p class="text-sm text-gray-500">All messages with this contact will be permanently deleted.</p>
+        </div>
+        <div class="flex gap-3 justify-end">
+          <button
+            class="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+            @click="clearHistoryConfirmId = null"
+          >
+            Cancel
+          </button>
+          <button
+            class="px-4 py-2 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+            @click="clearHistory"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Delete chat modal ─────────────────────────────────── -->
+    <div
+      v-if="deleteChatConfirmId"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      @click.self="deleteChatConfirmId = null"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl w-80 p-6 flex flex-col gap-4">
+        <div class="flex flex-col gap-1">
+          <h3 class="text-base font-semibold text-gray-900">Delete chat?</h3>
+          <p class="text-sm text-gray-500">The chat will be removed from your list. It will reappear if a new message arrives.</p>
+        </div>
+        <div class="flex gap-3 justify-end">
+          <button
+            class="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+            @click="deleteChatConfirmId = null"
+          >
+            Cancel
+          </button>
+          <button
+            class="px-4 py-2 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+            @click="deleteChat"
           >
             Delete
           </button>
