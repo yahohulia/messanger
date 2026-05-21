@@ -30,6 +30,31 @@ const chatContainer = ref<HTMLElement | null>(null)
 const targetUser = computed(() => availableUsers.value.find((u) => u.id === targetUserId.value))
 const targetIsOnline = computed(() => onlineUserIds.value.has(targetUserId.value))
 
+const searchQuery = ref('')
+const searchResults = ref<{ id: string; name: string; image?: string | null }[]>([])
+const isSearching = ref(false)
+
+const sidebarUsers = computed(() => {
+  if (!searchQuery.value.trim()) return availableUsers.value
+  return searchResults.value
+})
+
+let searchTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function onSearchInput() {
+  const q = searchQuery.value.trim()
+  if (!q) { searchResults.value = []; return }
+  if (searchTimeout) clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(async () => {
+    isSearching.value = true
+    try {
+      searchResults.value = await $fetch<{ id: string; name: string }[]>('/api/users/search', { query: { q } })
+    } finally {
+      isSearching.value = false
+    }
+  }, 300)
+}
+
 const activeMessages = computed(() =>
   allMessages.value.filter(
     (m) =>
@@ -170,16 +195,32 @@ function avatarLetter(name: unknown): string {
 
     <!-- Sidebar -->
     <aside class="w-72 bg-white border-r border-gray-200 flex flex-col shrink-0">
-      <div class="px-4 py-4 border-b border-gray-100">
+      <div class="px-4 py-3 border-b border-gray-100 flex flex-col gap-2">
         <h2 class="text-lg font-bold text-gray-900">Chats</h2>
+        <div class="relative">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search by username..."
+            class="w-full pl-9 pr-3 py-2 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            @input="onSearchInput"
+          />
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+          </svg>
+          <svg v-if="isSearching" class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
       </div>
 
       <div class="flex-1 overflow-y-auto">
-        <div v-if="availableUsers.length === 0" class="p-6 text-center text-gray-400 text-sm">
-          No other users yet.
+        <div v-if="sidebarUsers.length === 0" class="p-6 text-center text-gray-400 text-sm">
+          {{ searchQuery.trim() ? `No users found for "@${searchQuery.trim()}"` : 'No other users yet.' }}
         </div>
         <button
-          v-for="u in availableUsers"
+          v-for="u in sidebarUsers"
           :key="u.id"
           class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50"
           :class="targetUserId === u.id ? 'bg-blue-50 hover:bg-blue-50' : ''"
@@ -187,7 +228,8 @@ function avatarLetter(name: unknown): string {
         >
           <!-- Avatar with online dot -->
           <div class="relative shrink-0">
-            <div class="h-12 w-12 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-lg">
+            <img v-if="u.image" :src="u.image" :alt="String(u.name)" class="h-12 w-12 rounded-full object-cover" />
+            <div v-else class="h-12 w-12 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-lg">
               {{ avatarLetter(u.name) }}
             </div>
             <span
@@ -212,7 +254,8 @@ function avatarLetter(name: unknown): string {
 
       <!-- Current user -->
       <div class="px-4 py-3 border-t border-gray-100 flex items-center gap-3">
-        <div class="h-9 w-9 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold shrink-0">
+        <img v-if="currentUser?.image" :src="currentUser.image" :alt="String(currentUser.name)" class="h-9 w-9 rounded-full object-cover shrink-0" />
+        <div v-else class="h-9 w-9 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold shrink-0">
           {{ avatarLetter(currentUser?.name) }}
         </div>
         <div class="flex-1 min-w-0">
@@ -241,7 +284,8 @@ function avatarLetter(name: unknown): string {
         <!-- Chat header with online status -->
         <div class="px-6 py-3.5 bg-white border-b border-gray-200 flex items-center gap-3 shrink-0">
           <div class="relative shrink-0">
-            <div class="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
+            <img v-if="targetUser?.image" :src="targetUser.image" :alt="String(targetUser.name)" class="h-10 w-10 rounded-full object-cover" />
+            <div v-else class="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
               {{ avatarLetter(targetUser?.name) }}
             </div>
             <span

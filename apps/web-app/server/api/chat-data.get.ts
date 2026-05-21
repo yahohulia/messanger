@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   const myId = event.context.user.id
 
   const availableUsers = await db
-    .select({ id: user.id, name: user.name })
+    .select({ id: user.id, name: user.name, image: user.image })
     .from(user)
     .where(ne(user.id, myId))
 

@@ -80,14 +80,15 @@ async function submit() {
           v-if="mode === 'register'"
           class="flex flex-col gap-1.5 text-sm font-medium text-gray-600"
         >
-          Name
+          Username
           <input
             v-model="name"
             type="text"
-            placeholder="Your name"
+            placeholder="e.g. john_doe"
             class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             @keydown.enter="submit"
           />
+          <span class="text-xs text-gray-400 font-normal">This is how others will find you</span>
         </label>
 
         <p v-if="error" class="text-red-500 text-sm">{{ error }}</p>
