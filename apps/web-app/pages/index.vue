@@ -73,13 +73,18 @@ async function onSearchInput() {
 }
 
 function selectUser(u: Contact) {
-  // Add to contacts locally if not present (new chat opened via search)
   if (!contacts.value.find((c) => c.id === u.id)) {
     contacts.value = [...contacts.value, u]
   }
   targetUserId.value = u.id
   searchQuery.value = ''
   searchResults.value = []
+}
+
+async function hideChat(contactId: string) {
+  contacts.value = contacts.value.filter((c) => c.id !== contactId)
+  if (targetUserId.value === contactId) targetUserId.value = ''
+  await $fetch('/api/chat/hide', { method: 'POST', body: { contactId } }).catch(() => {})
 }
 
 const activeMessages = computed(() =>
@@ -153,6 +158,14 @@ function connectWebSocket(token: string) {
     }
 
     if (parsed.type === 'new_message') {
+      // Auto-add sender to contacts if not already there
+      const senderId = parsed.data.senderId
+      if (senderId !== currentUser.value?.id && !contacts.value.find((c) => c.id === senderId)) {
+        $fetch<Contact>(`/api/users/${senderId}`)
+          .then((u) => { if (u) contacts.value = [...contacts.value, u] })
+          .catch(() => {})
+      }
+
       const alreadyExists = allMessages.value.some((m) => m.id === parsed.data.id)
       if (!alreadyExists) {
         allMessages.value.push(parsed.data)
@@ -246,11 +259,14 @@ function avatarLetter(name: unknown): string {
         <div v-if="sidebarUsers.length === 0" class="p-6 text-center text-gray-400 text-sm">
           {{ searchQuery.trim() ? `No users found for "@${searchQuery.trim()}"` : 'No other users yet.' }}
         </div>
-        <button
+        <div
           v-for="u in sidebarUsers"
           :key="u.id"
-          class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50"
-          :class="targetUserId === u.id ? 'bg-blue-50 hover:bg-blue-50' : ''"
+          class="group relative flex items-center border-b border-gray-50"
+          :class="targetUserId === u.id ? 'bg-blue-50' : 'hover:bg-gray-50'"
+        >
+        <button
+          class="flex-1 flex items-center gap-3 px-4 py-3 transition-colors"
           @click="selectUser(u)"
         >
           <!-- Avatar with online dot -->
@@ -278,6 +294,18 @@ function avatarLetter(name: unknown): string {
             <p class="text-sm text-gray-400 truncate">{{ lastMessageFor(u.id) || 'No messages yet' }}</p>
           </div>
         </button>
+        <!-- Hide chat button (only for contacts, not search results) -->
+        <button
+          v-if="!searchQuery.trim()"
+          class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-200 opacity-0 group-hover:opacity-100 transition-all"
+          title="Remove from list"
+          @click.stop="hideChat(u.id)"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+        </div>
       </div>
 
       <!-- Current user -->

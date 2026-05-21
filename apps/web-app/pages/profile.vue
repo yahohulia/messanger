@@ -5,6 +5,33 @@ const authData = useState('auth-data')
 const user = computed(() => authData.value?.user)
 const authClient = useAuthClient()
 
+// Profile (name + email)
+const newName = ref(user.value?.name ?? '')
+const newEmail = ref(user.value?.email ?? '')
+const savingProfile = ref(false)
+const savedProfile = ref(false)
+const profileError = ref('')
+
+async function updateProfile() {
+  const name = newName.value.trim()
+  const email = newEmail.value.trim()
+  if (!name && !email) return
+  savingProfile.value = true
+  savedProfile.value = false
+  profileError.value = ''
+  try {
+    await $fetch('/api/user/update-profile', { method: 'POST', body: { name, email } })
+    authData.value = { ...authData.value, user: { ...user.value, name: name || user.value?.name, email: email || user.value?.email } }
+    savedProfile.value = true
+    setTimeout(() => { savedProfile.value = false }, 2000)
+  } catch (e: any) {
+    profileError.value = e?.data?.message ?? 'Failed to update'
+  } finally {
+    savingProfile.value = false
+  }
+}
+
+// Username
 const newUsername = ref((user.value as any)?.username ?? '')
 const saving = ref(false)
 const saved = ref(false)
@@ -132,6 +159,32 @@ async function signOut() {
           <p class="text-sm text-gray-400">{{ user?.email }}</p>
         </div>
       </div>
+
+      <!-- Change name & email -->
+      <div class="flex flex-col gap-3">
+        <h2 class="text-sm font-semibold text-gray-700">Profile info</h2>
+        <label class="flex flex-col gap-1.5 text-sm text-gray-600">
+          Display name
+          <input v-model="newName" type="text" placeholder="Your name"
+            class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            @keydown.enter="updateProfile" />
+        </label>
+        <label class="flex flex-col gap-1.5 text-sm text-gray-600">
+          Email
+          <input v-model="newEmail" type="email" placeholder="you@example.com"
+            class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            @keydown.enter="updateProfile" />
+        </label>
+        <p v-if="profileError" class="text-red-500 text-sm">{{ profileError }}</p>
+        <button
+          :disabled="savingProfile || (newName.trim() === user?.name && newEmail.trim() === user?.email)"
+          class="w-full rounded-xl py-2.5 text-sm font-semibold transition-colors disabled:opacity-50"
+          :class="savedProfile ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'"
+          @click="updateProfile"
+        >{{ savedProfile ? '✓ Saved' : savingProfile ? 'Saving...' : 'Save profile' }}</button>
+      </div>
+
+      <div class="border-t border-gray-100" />
 
       <!-- Change username -->
       <div class="flex flex-col gap-3">

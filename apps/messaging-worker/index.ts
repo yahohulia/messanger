@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import amqplib, { type ConsumeMessage } from 'amqplib';
-import { session, archivedMessage } from '@messanger/db';
+import { session, archivedMessage, hiddenContact } from '@messanger/db';
 import { eq, and } from 'drizzle-orm';
 import { db } from './db';
 import { broadcast as broadcastFn } from './lib/broadcast';
@@ -142,7 +142,16 @@ async function startWorker() {
 						console.log(`[Push Notification] Trigger FCM for offline user ${msg.receiverId}`);
 					}
 
-					db.insert(archivedMessage)
+					// Un-hide chat for receiver if they had hidden it
+				db.delete(hiddenContact)
+					.where(and(
+						eq(hiddenContact.userId, payload.receiverId),
+						eq(hiddenContact.contactId, payload.senderId)
+					))
+					.execute()
+					.catch((err) => console.error('un-hide failed:', err));
+
+				db.insert(archivedMessage)
 						.values({
 							id: payload.id,
 							senderId: payload.senderId,

@@ -1,6 +1,6 @@
 import { db } from '~/server/utils/db'
-import { user, archivedMessage } from '@messanger/db'
-import { eq, or, asc, inArray } from 'drizzle-orm'
+import { user, archivedMessage, hiddenContact } from '@messanger/db'
+import { eq, or, asc, inArray, notInArray } from 'drizzle-orm'
 
 export default defineEventHandler(async (event) => {
   if (!event.context.user) {
@@ -20,7 +20,15 @@ export default defineEventHandler(async (event) => {
     .from(archivedMessage)
     .where(eq(archivedMessage.receiverId, myId))
 
-  const contactIds = [...new Set([...sentTo.map((r) => r.id), ...receivedFrom.map((r) => r.id)])]
+  const allContactIds = [...new Set([...sentTo.map((r) => r.id), ...receivedFrom.map((r) => r.id)])]
+
+  const hidden = await db
+    .select({ id: hiddenContact.contactId })
+    .from(hiddenContact)
+    .where(eq(hiddenContact.userId, myId))
+  const hiddenIds = hidden.map((h) => h.id)
+
+  const contactIds = allContactIds.filter((id) => !hiddenIds.includes(id))
 
   const contacts =
     contactIds.length > 0
