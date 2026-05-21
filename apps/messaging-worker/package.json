@@ -4,7 +4,9 @@
 	"private": true,
 	"scripts": {
 		"start": "node --import tsx/esm index.ts",
-		"dev": "node --env-file=.env --watch --import tsx/esm index.ts"
+		"dev": "node --env-file=.env --watch --import tsx/esm index.ts",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"dependencies": {
 		"amqplib": "^0.10.9",
@@ -15,7 +17,8 @@
 		"@messanger/db": "*",
 		"@types/amqplib": "^0.10.8",
 		"@types/node": "^24",
-		"@types/ws": "^8.18.1"
+		"@types/ws": "^8.18.1",
+		"vitest": "^3.2.0"
 	},
 	"peerDependencies": {
 		"typescript": "^5"

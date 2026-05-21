@@ -3,6 +3,9 @@ import amqplib, { type ConsumeMessage } from 'amqplib';
 import { session, archivedMessage } from '@messanger/db';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
+import { broadcast as broadcastFn } from './lib/broadcast';
+import { isSessionValid } from './lib/session-validator';
+import { buildMessagePayload } from './lib/message-builder';
 
 if (!process.env.RMQ_URL) throw new Error('RMQ_URL is not set');
 
@@ -18,12 +21,7 @@ const onlineUsers = new Set<string>();
 const userSockets = new Map<string, WebSocket>();
 
 function broadcast(excludeUserId: string, payload: unknown) {
-	const data = JSON.stringify(payload);
-	userSockets.forEach((socket, uid) => {
-		if (uid !== excludeUserId && socket.readyState === WebSocket.OPEN) {
-			socket.send(data);
-		}
-	});
+	broadcastFn(userSockets, excludeUserId, payload);
 }
 
 async function startWorker() {
@@ -50,7 +48,7 @@ async function startWorker() {
 						where: eq(session.token, msg.token)
 					});
 
-					if (!sessionRecord || new Date(sessionRecord.expiresAt) < new Date()) {
+					if (!isSessionValid(sessionRecord)) {
 						ws.send(JSON.stringify({ type: 'error', message: 'Unauthorized' }));
 						return ws.close();
 					}
@@ -114,14 +112,7 @@ async function startWorker() {
 				}
 
 				if (msg.type === 'send_message' && userId) {
-					// Use the client-provided tempId so the client can match delivery confirmations
-					const payload = {
-						id: msg.tempId,
-						senderId: userId,
-						receiverId: msg.receiverId,
-						content: msg.content,
-						sentAt: new Date().toISOString()
-					};
+					const payload = buildMessagePayload(userId, msg);
 
 					channel.publish(
 						EXCHANGE_NAME,
