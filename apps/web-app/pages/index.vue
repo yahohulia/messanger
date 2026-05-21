@@ -15,8 +15,9 @@ type Message = {
 const { data, error } = await useFetch('/api/chat-data')
 if (error.value) await navigateTo('/login')
 
+type Contact = { id: string; name: string; username?: string | null; image?: string | null }
+
 const currentUser = computed(() => data.value?.user)
-const availableUsers = computed(() => data.value?.availableUsers ?? [])
 
 const ws = ref<WebSocket | null>(null)
 const isConnected = ref(false)
@@ -24,6 +25,10 @@ const onlineUserIds = ref<Set<string>>(new Set())
 const targetUserId = ref('')
 const inputText = ref('')
 const unreadCounts = ref<Record<string, number>>({})
+
+// Contacts = users with existing message history; grows when new chat is opened via search
+const contacts = ref<Contact[]>((data.value?.contacts ?? []) as Contact[])
+
 function inferStatus(m: Record<string, unknown>): MessageStatus | undefined {
   if (!m.senderId || m.senderId !== currentUser.value?.id) return undefined
   if (m.readAt) return 'read'
@@ -39,17 +44,17 @@ const allMessages = ref<Message[]>(
 )
 const chatContainer = ref<HTMLElement | null>(null)
 
-const targetUser = computed(() => availableUsers.value.find((u) => u.id === targetUserId.value))
+const targetUser = computed(() => contacts.value.find((u) => u.id === targetUserId.value))
 const targetIsOnline = computed(() => onlineUserIds.value.has(targetUserId.value))
 
+// Sidebar: when search is empty show contacts; when typing show search results
 const searchQuery = ref('')
-const searchResults = ref<{ id: string; name: string; image?: string | null }[]>([])
+const searchResults = ref<Contact[]>([])
 const isSearching = ref(false)
 
-const sidebarUsers = computed(() => {
-  if (!searchQuery.value.trim()) return availableUsers.value
-  return searchResults.value
-})
+const sidebarUsers = computed(() =>
+  searchQuery.value.trim() ? searchResults.value : contacts.value
+)
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -60,11 +65,21 @@ async function onSearchInput() {
   searchTimeout = setTimeout(async () => {
     isSearching.value = true
     try {
-      searchResults.value = await $fetch<{ id: string; name: string }[]>('/api/users/search', { query: { q } })
+      searchResults.value = await $fetch<Contact[]>('/api/users/search', { query: { q } })
     } finally {
       isSearching.value = false
     }
   }, 300)
+}
+
+function selectUser(u: Contact) {
+  // Add to contacts locally if not present (new chat opened via search)
+  if (!contacts.value.find((c) => c.id === u.id)) {
+    contacts.value = [...contacts.value, u]
+  }
+  targetUserId.value = u.id
+  searchQuery.value = ''
+  searchResults.value = []
 }
 
 const activeMessages = computed(() =>
@@ -236,7 +251,7 @@ function avatarLetter(name: unknown): string {
           :key="u.id"
           class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50"
           :class="targetUserId === u.id ? 'bg-blue-50 hover:bg-blue-50' : ''"
-          @click="targetUserId = u.id"
+          @click="selectUser(u)"
         >
           <!-- Avatar with online dot -->
           <div class="relative shrink-0">
@@ -259,6 +274,7 @@ function avatarLetter(name: unknown): string {
                 {{ unreadCounts[u.id] }}
               </span>
             </div>
+            <p v-if="u.username" class="text-xs text-gray-400 truncate">@{{ u.username }}</p>
             <p class="text-sm text-gray-400 truncate">{{ lastMessageFor(u.id) || 'No messages yet' }}</p>
           </div>
         </button>
@@ -309,6 +325,7 @@ function avatarLetter(name: unknown): string {
             <p class="font-semibold text-gray-900 leading-tight">{{ targetUser?.name }}</p>
             <p class="text-xs" :class="targetIsOnline ? 'text-emerald-500' : 'text-gray-400'">
               {{ targetIsOnline ? 'Online' : 'Offline' }}
+              <span v-if="targetUser?.username" class="text-gray-400 ml-1">· @{{ targetUser.username }}</span>
             </p>
           </div>
         </div>

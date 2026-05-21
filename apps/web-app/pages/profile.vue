@@ -5,7 +5,7 @@ const authData = useState('auth-data')
 const user = computed(() => authData.value?.user)
 const authClient = useAuthClient()
 
-const newUsername = ref(user.value?.name ?? '')
+const newUsername = ref((user.value as any)?.username ?? '')
 const saving = ref(false)
 const saved = ref(false)
 const saveError = ref('')
@@ -57,16 +57,20 @@ async function onFileChange(e: Event) {
 
 async function updateUsername() {
   const trimmed = newUsername.value.trim()
-  if (!trimmed || trimmed === user.value?.name) return
+  if (!trimmed || trimmed === (user.value as any)?.username) return
   saving.value = true
   saved.value = false
   saveError.value = ''
   try {
-    const { error } = await authClient.updateUser({ name: trimmed })
-    if (error) { saveError.value = error.message; return }
-    authData.value = { ...authData.value, user: { ...user.value, name: trimmed } }
+    const res = await $fetch('/api/user/update-username', {
+      method: 'POST',
+      body: { username: trimmed }
+    }).catch((e) => { throw new Error(e?.data?.message ?? 'Failed to update') })
+    authData.value = { ...authData.value, user: { ...user.value, username: trimmed } }
     saved.value = true
     setTimeout(() => { saved.value = false }, 2000)
+  } catch (e: any) {
+    saveError.value = e.message
   } finally {
     saving.value = false
   }
@@ -147,7 +151,7 @@ async function signOut() {
         <p v-if="saveError" class="text-red-500 text-sm">{{ saveError }}</p>
 
         <button
-          :disabled="saving || !newUsername.trim() || newUsername.trim() === user?.name"
+          :disabled="saving || !newUsername.trim() || newUsername.trim() === (user as any)?.username"
           class="w-full rounded-xl py-2.5 text-sm font-semibold transition-colors disabled:opacity-50"
           :class="saved ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'"
           @click="updateUsername"

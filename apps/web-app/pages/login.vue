@@ -6,20 +6,36 @@ const mode = ref<'login' | 'register'>('login')
 const email = ref('')
 const password = ref('')
 const name = ref('')
+const username = ref('')
 const error = ref('')
 const loading = ref(false)
 
 async function submit() {
   error.value = ''
   loading.value = true
-  const isLogin = mode.value === 'login'
 
-  const { error: err } = isLogin
-    ? await authClient.signIn.email({ email: email.value, password: password.value })
-    : await authClient.signUp.email({ email: email.value, password: password.value, name: name.value })
+  if (mode.value === 'login') {
+    const { error: err } = await authClient.signIn.email({ email: email.value, password: password.value })
+    loading.value = false
+    if (err) { error.value = err.message; return }
+  } else {
+    const { error: err } = await authClient.signUp.email({
+      email: email.value,
+      password: password.value,
+      name: name.value
+    })
+    loading.value = false
+    if (err) { error.value = err.message; return }
 
-  loading.value = false
-  if (err) { error.value = err.message; return }
+    // Set username separately after sign-up
+    if (username.value.trim()) {
+      const { error: uErr } = await useFetch('/api/user/update-username', {
+        method: 'POST',
+        body: { username: username.value.trim() }
+      })
+      if (uErr.value) { error.value = uErr.value.data?.message ?? 'Could not set username'; return }
+    }
+  }
 
   const session = await $fetch('/api/session')
   useState('auth-data').value = session
@@ -42,62 +58,49 @@ async function submit() {
           class="relative z-10 flex-1 py-2 text-sm font-semibold rounded-full transition-colors duration-200"
           :class="mode === 'login' ? 'text-gray-900' : 'text-gray-400'"
           @click="mode = 'login'"
-        >
-          Login
-        </button>
+        >Login</button>
         <button
           class="relative z-10 flex-1 py-2 text-sm font-semibold rounded-full transition-colors duration-200"
           :class="mode === 'register' ? 'text-gray-900' : 'text-gray-400'"
           @click="mode = 'register'"
-        >
-          Register
-        </button>
+        >Register</button>
       </div>
 
       <div class="flex flex-col gap-4">
         <label class="flex flex-col gap-1.5 text-sm font-medium text-gray-600">
           Email
-          <input
-            v-model="email"
-            type="email"
-            placeholder="you@example.com"
-            class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <input v-model="email" type="email" placeholder="you@example.com"
+            class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </label>
 
         <label class="flex flex-col gap-1.5 text-sm font-medium text-gray-600">
           Password
-          <input
-            v-model="password"
-            type="password"
-            placeholder="••••••••"
+          <input v-model="password" type="password" placeholder="••••••••"
             class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            @keydown.enter="submit"
-          />
+            @keydown.enter="submit" />
         </label>
 
-        <label
-          v-if="mode === 'register'"
-          class="flex flex-col gap-1.5 text-sm font-medium text-gray-600"
-        >
-          Username
-          <input
-            v-model="name"
-            type="text"
-            placeholder="e.g. john_doe"
-            class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            @keydown.enter="submit"
-          />
-          <span class="text-xs text-gray-400 font-normal">This is how others will find you</span>
-        </label>
+        <template v-if="mode === 'register'">
+          <label class="flex flex-col gap-1.5 text-sm font-medium text-gray-600">
+            Display name
+            <input v-model="name" type="text" placeholder="Your name"
+              class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </label>
+
+          <label class="flex flex-col gap-1.5 text-sm font-medium text-gray-600">
+            Username
+            <input v-model="username" type="text" placeholder="e.g. john_doe"
+              class="rounded-xl border border-gray-200 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              @keydown.enter="submit" />
+            <span class="text-xs text-gray-400 font-normal">Others find you by username</span>
+          </label>
+        </template>
 
         <p v-if="error" class="text-red-500 text-sm">{{ error }}</p>
 
-        <button
-          :disabled="loading"
+        <button :disabled="loading"
           class="w-full rounded-xl bg-blue-600 py-2.5 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors mt-1"
-          @click="submit"
-        >
+          @click="submit">
           {{ loading ? '...' : mode === 'login' ? 'Sign in' : 'Create account' }}
         </button>
       </div>

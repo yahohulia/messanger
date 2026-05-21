@@ -13,8 +13,8 @@ export default defineEventHandler(async (event) => {
   if (!term) return []
 
   return db
-    .select({ id: user.id, name: user.name, image: user.image })
+    .select({ id: user.id, name: user.name, username: user.username, image: user.image })
     .from(user)
-    .where(and(ne(user.id, event.context.user.id), like(user.name, `%${term}%`)))
+    .where(and(ne(user.id, event.context.user.id), like(user.username, `%${term}%`)))
     .limit(10)
 })
