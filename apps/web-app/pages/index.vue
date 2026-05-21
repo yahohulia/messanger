@@ -24,7 +24,19 @@ const onlineUserIds = ref<Set<string>>(new Set())
 const targetUserId = ref('')
 const inputText = ref('')
 const unreadCounts = ref<Record<string, number>>({})
-const allMessages = ref<Message[]>((data.value?.initialMessages as Message[]) ?? [])
+function inferStatus(m: Record<string, unknown>): MessageStatus | undefined {
+  if (!m.senderId || m.senderId !== currentUser.value?.id) return undefined
+  if (m.readAt) return 'read'
+  if (m.deliveredAt) return 'delivered'
+  return 'sent'
+}
+
+const allMessages = ref<Message[]>(
+  ((data.value?.initialMessages ?? []) as Record<string, unknown>[]).map((m) => ({
+    ...(m as unknown as Message),
+    status: inferStatus(m),
+  }))
+)
 const chatContainer = ref<HTMLElement | null>(null)
 
 const targetUser = computed(() => availableUsers.value.find((u) => u.id === targetUserId.value))

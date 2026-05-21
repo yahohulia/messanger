@@ -14,6 +14,8 @@ export const archivedMessage = sqliteTable("archived_messages", {
     .references(() => user.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   sentAt: integer("sent_at", { mode: "timestamp" }).notNull(),
+  deliveredAt: integer("delivered_at", { mode: "timestamp" }),
+  readAt: integer("read_at", { mode: "timestamp" }),
 });
 
 export const archivedMessageRelations = relations(

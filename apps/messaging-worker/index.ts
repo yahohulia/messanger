@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import amqplib, { type ConsumeMessage } from 'amqplib';
 import { session, archivedMessage } from '@messanger/db';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from './db';
 import { broadcast as broadcastFn } from './lib/broadcast';
 import { isSessionValid } from './lib/session-validator';
@@ -81,6 +81,13 @@ async function startWorker() {
 								pendingAcks.set(deliveryTag, rmqMsg);
 								ws.send(JSON.stringify({ type: 'new_message', deliveryTag, data: payload }));
 
+								// Mark as delivered in DB
+								db.update(archivedMessage)
+									.set({ deliveredAt: new Date() })
+									.where(eq(archivedMessage.id, payload.id))
+									.execute()
+									.catch((err) => console.error('deliveredAt update failed:', err));
+
 								// Notify sender their message was delivered
 								const senderSocket = userSockets.get(payload.senderId);
 								if (senderSocket?.readyState === WebSocket.OPEN) {
@@ -105,6 +112,16 @@ async function startWorker() {
 				}
 
 				if (msg.type === 'read_receipt' && userId) {
+					// Mark all messages from withUserId → userId as read in DB
+					db.update(archivedMessage)
+						.set({ readAt: new Date() })
+						.where(and(
+							eq(archivedMessage.senderId, msg.withUserId),
+							eq(archivedMessage.receiverId, userId)
+						))
+						.execute()
+						.catch((err) => console.error('readAt update failed:', err));
+
 					const targetSocket = userSockets.get(msg.withUserId);
 					if (targetSocket?.readyState === WebSocket.OPEN) {
 						targetSocket.send(JSON.stringify({ type: 'messages_read', byUserId: userId }));
