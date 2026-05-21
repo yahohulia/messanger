@@ -9,6 +9,7 @@ type Message = {
   receiverId: string
   content: string
   sentAt: string | Date
+  editedAt?: string | Date | null
   status?: MessageStatus
 }
 
@@ -87,6 +88,75 @@ async function hideChat(contactId: string) {
   await $fetch('/api/chat/hide', { method: 'POST', body: { contactId } }).catch(() => {})
 }
 
+// ── Context menu ──────────────────────────────────────────────
+type CtxMenu =
+  | { type: 'contact'; contactId: string; x: number; y: number }
+  | { type: 'message'; messageId: string; x: number; y: number }
+
+const ctxMenu = ref<CtxMenu | null>(null)
+
+function openContactMenu(e: MouseEvent, contactId: string) {
+  e.preventDefault()
+  ctxMenu.value = { type: 'contact', contactId, x: e.clientX, y: e.clientY }
+}
+
+function openMessageMenu(e: MouseEvent, messageId: string) {
+  e.preventDefault()
+  ctxMenu.value = { type: 'message', messageId, x: e.clientX, y: e.clientY }
+}
+
+function closeCtx() { ctxMenu.value = null }
+
+onMounted(() => document.addEventListener('click', closeCtx))
+onUnmounted(() => {
+  document.removeEventListener('click', closeCtx)
+  ws.value?.close()
+})
+
+async function clearHistory(contactId: string) {
+  await $fetch('/api/chat/clear-history', { method: 'POST', body: { contactId } })
+  allMessages.value = allMessages.value.filter(
+    (m) => m.senderId !== contactId && m.receiverId !== contactId
+  )
+  closeCtx()
+}
+
+// ── Delete message ────────────────────────────────────────────
+const deleteConfirmId = ref<string | null>(null)
+
+async function confirmDelete() {
+  if (!deleteConfirmId.value) return
+  const id = deleteConfirmId.value
+  await $fetch(`/api/messages/${id}`, { method: 'DELETE' }).catch(() => {})
+  allMessages.value = allMessages.value.filter((m) => m.id !== id)
+  deleteConfirmId.value = null
+}
+
+// ── Edit message ──────────────────────────────────────────────
+const editingId = ref<string | null>(null)
+const editText = ref('')
+const editInput = ref<HTMLTextAreaElement | null>(null)
+
+function startEdit(msg: Message) {
+  editingId.value = msg.id
+  editText.value = msg.content
+  closeCtx()
+  nextTick(() => editInput.value?.focus())
+}
+
+function cancelEdit() { editingId.value = null; editText.value = '' }
+
+async function submitEdit() {
+  if (!editingId.value || !editText.value.trim()) return
+  const id = editingId.value
+  const content = editText.value.trim()
+  await $fetch(`/api/messages/${id}`, { method: 'PATCH', body: { content } }).catch(() => {})
+  allMessages.value = allMessages.value.map((m) =>
+    m.id === id ? { ...m, content, editedAt: new Date() } : m
+  )
+  cancelEdit()
+}
+
 const activeMessages = computed(() =>
   allMessages.value.filter(
     (m) =>
@@ -113,7 +183,6 @@ onMounted(() => {
   if (token) connectWebSocket(token)
 })
 
-onUnmounted(() => ws.value?.close())
 
 watch(targetUserId, (id) => {
   if (!id) return
@@ -268,6 +337,7 @@ function avatarLetter(name: unknown): string {
         <button
           class="flex-1 flex items-center gap-3 px-4 py-3 transition-colors"
           @click="selectUser(u)"
+          @contextmenu="openContactMenu($event, u.id)"
         >
           <!-- Avatar with online dot -->
           <div class="relative shrink-0">
@@ -368,6 +438,7 @@ function avatarLetter(name: unknown): string {
             :key="msg.id"
             class="flex"
             :class="msg.senderId === currentUser?.id ? 'justify-end' : 'justify-start'"
+            @contextmenu="openMessageMenu($event, msg.id)"
           >
             <div
               class="max-w-[65%] px-4 py-2 rounded-2xl shadow-sm"
@@ -377,29 +448,45 @@ function avatarLetter(name: unknown): string {
                   : 'bg-white text-gray-900 rounded-bl-none border border-gray-100'
               "
             >
-              <p class="leading-relaxed break-words">{{ msg.content }}</p>
-              <div class="flex items-center justify-end gap-1 mt-0.5">
-                <span class="text-xs" :class="msg.senderId === currentUser?.id ? 'text-blue-100' : 'text-gray-400'">
-                  {{ formatTime(msg.sentAt) }}
-                </span>
-                <!-- Ticks: only for own messages sent in this session -->
-                <template v-if="msg.senderId === currentUser?.id && msg.status">
-                  <!-- ✓✓ cyan = read -->
-                  <svg v-if="msg.status === 'read'" class="w-4 h-3 text-cyan-300" viewBox="0 0 20 12" fill="none">
-                    <path d="M1 6L5 10L11 2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M7 6L11 10L17 2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                  <!-- ✓✓ dim = delivered -->
-                  <svg v-else-if="msg.status === 'delivered'" class="w-4 h-3 text-white opacity-60" viewBox="0 0 20 12" fill="none">
-                    <path d="M1 6L5 10L11 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M7 6L11 10L17 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                  <!-- ✓ dim = sent -->
-                  <svg v-else class="w-3 h-3 text-white opacity-50" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                </template>
-              </div>
+              <!-- Edit mode -->
+              <template v-if="editingId === msg.id">
+                <textarea
+                  ref="editInput"
+                  v-model="editText"
+                  rows="2"
+                  class="w-full bg-blue-400 text-white placeholder:text-blue-200 rounded-lg px-2 py-1 text-sm resize-none focus:outline-none"
+                  @keydown.enter.exact.prevent="submitEdit"
+                  @keydown.escape="cancelEdit"
+                />
+                <div class="flex justify-end gap-2 mt-1">
+                  <button class="text-xs text-blue-200 hover:text-white" @click="cancelEdit">Cancel</button>
+                  <button class="text-xs text-white font-semibold hover:text-blue-100" @click="submitEdit">Save</button>
+                </div>
+              </template>
+
+              <!-- Normal mode -->
+              <template v-else>
+                <p class="leading-relaxed break-words">{{ msg.content }}</p>
+                <div class="flex items-center justify-end gap-1 mt-0.5">
+                  <span v-if="msg.editedAt" class="text-xs opacity-60 italic" :class="msg.senderId === currentUser?.id ? 'text-blue-100' : 'text-gray-400'">edited</span>
+                  <span class="text-xs" :class="msg.senderId === currentUser?.id ? 'text-blue-100' : 'text-gray-400'">
+                    {{ formatTime(msg.sentAt) }}
+                  </span>
+                  <template v-if="msg.senderId === currentUser?.id && msg.status">
+                    <svg v-if="msg.status === 'read'" class="w-4 h-3 text-cyan-300" viewBox="0 0 20 12" fill="none">
+                      <path d="M1 6L5 10L11 2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M7 6L11 10L17 2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <svg v-else-if="msg.status === 'delivered'" class="w-4 h-3 text-white opacity-60" viewBox="0 0 20 12" fill="none">
+                      <path d="M1 6L5 10L11 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M7 6L11 10L17 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <svg v-else class="w-3 h-3 text-white opacity-50" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </template>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -425,4 +512,89 @@ function avatarLetter(name: unknown): string {
       </template>
     </main>
   </div>
+
+  <!-- ── Context menu ─────────────────────────────────────────── -->
+  <Teleport to="body">
+    <div
+      v-if="ctxMenu"
+      class="fixed z-50 min-w-[160px] bg-white rounded-xl shadow-xl border border-gray-100 py-1 overflow-hidden"
+      :style="{ top: ctxMenu.y + 'px', left: ctxMenu.x + 'px' }"
+      @click.stop
+    >
+      <!-- Contact menu -->
+      <template v-if="ctxMenu.type === 'contact'">
+        <button
+          class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          @click="clearHistory(ctxMenu.contactId)"
+        >
+          <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0H7m2-3h6a1 1 0 011 1H8a1 1 0 011-1z"/>
+          </svg>
+          Clear history
+        </button>
+        <button
+          class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
+          @click="hideChat(ctxMenu.contactId); closeCtx()"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+          Delete chat
+        </button>
+      </template>
+
+      <!-- Message menu -->
+      <template v-else-if="ctxMenu.type === 'message'">
+        <template v-if="allMessages.find(m => m.id === ctxMenu.messageId)?.senderId === currentUser?.id">
+          <button
+            class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            @click="startEdit(allMessages.find(m => m.id === ctxMenu.messageId)!)"
+          >
+            <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            Edit
+          </button>
+          <div class="border-t border-gray-100 my-0.5" />
+        </template>
+        <button
+          class="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
+          @click="deleteConfirmId = ctxMenu.messageId; closeCtx()"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0H7m2-3h6a1 1 0 011 1H8a1 1 0 011-1z"/>
+          </svg>
+          Delete
+        </button>
+      </template>
+    </div>
+
+    <!-- ── Delete confirmation modal ──────────────────────────── -->
+    <div
+      v-if="deleteConfirmId"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      @click.self="deleteConfirmId = null"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl w-80 p-6 flex flex-col gap-4">
+        <div class="flex flex-col gap-1">
+          <h3 class="text-base font-semibold text-gray-900">Delete message?</h3>
+          <p class="text-sm text-gray-500">This action cannot be undone.</p>
+        </div>
+        <div class="flex gap-3 justify-end">
+          <button
+            class="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+            @click="deleteConfirmId = null"
+          >
+            Cancel
+          </button>
+          <button
+            class="px-4 py-2 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+            @click="confirmDelete"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>

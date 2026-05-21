@@ -16,6 +16,7 @@ export const archivedMessage = sqliteTable("archived_messages", {
   sentAt: integer("sent_at", { mode: "timestamp" }).notNull(),
   deliveredAt: integer("delivered_at", { mode: "timestamp" }),
   readAt: integer("read_at", { mode: "timestamp" }),
+  editedAt: integer("edited_at", { mode: "timestamp" }),
 });
 
 export const hiddenContact = sqliteTable(

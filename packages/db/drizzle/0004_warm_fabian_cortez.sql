@@ -1,0 +1,1 @@
+ALTER TABLE `archived_messages` ADD `edited_at` integer;
