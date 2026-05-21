@@ -3,7 +3,10 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"test-web": "npm run test -w web-app",
+		"test-worker": "npm run test -w messaging-worker",
+		"test": "npm run test-web && npm run test-worker"
 	},
 	"devDependencies": {
 		"prettier": "^3.8.1",
