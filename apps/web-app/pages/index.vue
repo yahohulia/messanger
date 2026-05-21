@@ -146,7 +146,17 @@ async function deleteChat() {
 // ── Delete message ────────────────────────────────────────────
 const deleteConfirmId = ref<string | null>(null)
 
-async function confirmDelete() {
+const deleteConfirmMsg = computed(() =>
+  allMessages.value.find((m) => m.id === deleteConfirmId.value) ?? null
+)
+
+async function deleteForMe() {
+  if (!deleteConfirmId.value) return
+  allMessages.value = allMessages.value.filter((m) => m.id !== deleteConfirmId.value)
+  deleteConfirmId.value = null
+}
+
+async function deleteForEveryone() {
   if (!deleteConfirmId.value) return
   const id = deleteConfirmId.value
   await $fetch(`/api/messages/${id}`, { method: 'DELETE' }).catch(() => {})
@@ -589,22 +599,29 @@ function avatarLetter(name: unknown): string {
       <div class="bg-white rounded-2xl shadow-2xl w-80 p-6 flex flex-col gap-4">
         <div class="flex flex-col gap-1">
           <h3 class="text-base font-semibold text-gray-900">Delete message?</h3>
-          <p class="text-sm text-gray-500">This action cannot be undone.</p>
+          <p class="text-sm text-gray-500">Choose who to delete it for.</p>
         </div>
-        <div class="flex gap-3 justify-end">
+        <div class="flex flex-col gap-2">
           <button
-            class="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-            @click="deleteConfirmId = null"
+            class="w-full px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors text-left"
+            @click="deleteForMe"
           >
-            Cancel
+            Delete for me
           </button>
           <button
-            class="px-4 py-2 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
-            @click="confirmDelete"
+            v-if="deleteConfirmMsg?.senderId === currentUser?.id"
+            class="w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors text-left"
+            @click="deleteForEveryone"
           >
-            Delete
+            Delete for everyone
           </button>
         </div>
+        <button
+          class="text-sm text-gray-400 hover:text-gray-600 transition-colors self-end"
+          @click="deleteConfirmId = null"
+        >
+          Cancel
+        </button>
       </div>
     </div>
 
