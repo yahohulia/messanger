@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Schema mocks - simple objects, no real DB needed
 vi.mock('@messanger/db', () => ({
-  user: { id: 'id', name: 'name' },
+  user: { id: 'id', name: 'name', username: 'username', image: 'image' },
   archivedMessage: { senderId: 'senderId', receiverId: 'receiverId', sentAt: 'sentAt' },
+  hiddenContact: { userId: 'userId', contactId: 'contactId' },
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -11,44 +11,66 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
   or: vi.fn(),
   asc: vi.fn(),
+  inArray: vi.fn(),
+  notInArray: vi.fn(),
 }));
 
-// Minimal db mock — select() is a plain vi.fn(), configured per-test in beforeEach
 vi.mock('~/server/utils/db', () => ({
-  db: { select: vi.fn() },
+  db: {
+    select: vi.fn(),
+    selectDistinct: vi.fn(),
+  },
 }));
 
-const mockUsers = [{ id: 'user2', name: 'Bob' }];
+const mockContacts = [{ id: 'user2', name: 'Bob', username: 'bob', image: null }];
 const mockMessages = [
   { id: 'msg1', senderId: 'user1', receiverId: 'user2', content: 'Hi', sentAt: new Date() },
 ];
 
-// Import AFTER mocks are set up
 const { db } = await import('~/server/utils/db');
 const handler = (await import('../../server/api/chat-data.get')).default as Function;
 
+// Helper to build a chainable mock that resolves to `value` at the end
+function chainMock(value: unknown) {
+  const chain: Record<string, unknown> = {};
+  const end = vi.fn().mockResolvedValue(value);
+  chain.from = vi.fn(() => ({ where: vi.fn(() => ({ orderBy: end, then: end.bind(null, undefined) })) }));
+  // make .from().where() itself thenable (resolves without orderBy)
+  chain.from = vi.fn(() => ({
+    where: vi.fn(() => ({
+      orderBy: vi.fn().mockResolvedValue(value),
+      then: (resolve: Function) => Promise.resolve(value).then(resolve),
+    })),
+    then: (resolve: Function) => Promise.resolve(value).then(resolve),
+  }));
+  return chain;
+}
+
 beforeEach(() => {
-  // First select() → users query: .from().where() resolves directly
-  // Second select() → messages query: .from().where().orderBy() resolves
+  // selectDistinct × 2: sentTo (receiverIds), receivedFrom (senderIds)
+  vi.mocked(db.selectDistinct)
+    .mockImplementationOnce(() => ({
+      from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ id: 'user2' }]) })),
+    }) as any)
+    .mockImplementationOnce(() => ({
+      from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([]) })),
+    }) as any);
+
+  // select × 3: hidden contacts, contacts by id, initialMessages
   vi.mocked(db.select)
-    .mockImplementationOnce(
-      () =>
-        ({
-          from: vi.fn(() => ({
-            where: vi.fn().mockResolvedValue(mockUsers),
-          })),
-        }) as any
-    )
-    .mockImplementationOnce(
-      () =>
-        ({
-          from: vi.fn(() => ({
-            where: vi.fn(() => ({
-              orderBy: vi.fn().mockResolvedValue(mockMessages),
-            })),
-          })),
-        }) as any
-    );
+    .mockImplementationOnce(() => ({
+      from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([]) })), // no hidden contacts
+    }) as any)
+    .mockImplementationOnce(() => ({
+      from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(mockContacts) })), // contacts
+    }) as any)
+    .mockImplementationOnce(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          orderBy: vi.fn().mockResolvedValue(mockMessages),
+        })),
+      })),
+    }) as any);
 });
 
 function makeEvent(overrides: Record<string, unknown> = {}) {
@@ -72,9 +94,9 @@ describe('GET /api/chat-data', () => {
     expect(result.session).toEqual(session);
   });
 
-  it('returns availableUsers from db', async () => {
+  it('returns contacts from db', async () => {
     const result = await handler(makeEvent({ user: { id: 'user1' }, session: {} }));
-    expect(result.availableUsers).toEqual(mockUsers);
+    expect(result.contacts).toEqual(mockContacts);
   });
 
   it('returns initialMessages from db', async () => {
